@@ -17,6 +17,7 @@ Experiments:
 - Dataset: Lichess Games + Stockfish Selfplay + Optional Puzzles + Optional COT
 - Context: 77 without, ~170 with COT
 - Multi-Task Tokenization (Arbiter)
+- Distillation with Soft Tokens (M+E)
 
 Evals:
 - Action Accuracy
