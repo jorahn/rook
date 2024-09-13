@@ -1,6 +1,7 @@
 transformers
 datasets
 tokenizer
+accelerate
 torch
 tqdm
 
