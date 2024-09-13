@@ -39,7 +39,7 @@ def run_training(args):
     config = make_config(
         vocab_size=2048,             # 32 should suffice for FEN encoding + 1968 actions for av predictor
                                     # padding to the next power of 2 -> 2048
-        pad_token_id=0,
+        pad_token_id=tokenizer.pad_token_id,
         hidden_size=256,             # embedding dimension from the paper
         intermediate_size=1024,      # not specified
         num_hidden_layers=8,         # as in the paper
@@ -59,7 +59,7 @@ def run_training(args):
 
     training_args = TrainingArguments(
         # 2 devices
-        per_device_train_batch_size=1024,  # bs 1024 in the paper on 4x 95G tpu, try to fit as much as possible ...
+        per_device_train_batch_size=1024, # bs 1024 in the paper on 4x 95G tpu, try to fit as much as possible ...
         gradient_accumulation_steps=1,    # ... else increase this
         gradient_checkpointing=False,     # save memory if needed, reduces speed
         bf16=True,
@@ -70,7 +70,7 @@ def run_training(args):
         per_device_eval_batch_size=256,
         eval_strategy="steps",
         eval_steps=250,
-        num_train_epochs=3.0,            # 2.7-3.2 in the paper for ablations, 5.4 for full training
+        num_train_epochs=5.0,            # 2.7-3.2 in the paper for ablations, 5.4 for full training
         #max_steps=5e6,                    # 5e6 in the paper, 40m samples, bs 1024 -> 128 Epochs !?!
         lr_scheduler_type="cosine",
         warmup_steps=500,
@@ -78,7 +78,7 @@ def run_training(args):
         log_level="error",
         #report_to="none",
         report_to="wandb",
-        run_name=args.ds.split("/")[-1],
+        run_name=args.ds.split("/")[-1]+"_5e_bs2048",
     )
 
     trainer = Trainer(
@@ -90,10 +90,11 @@ def run_training(args):
         compute_metrics=compute_metrics,
         optimizers=(None, None), # TODO: non-standard optimizer and scheduler
         )
-
+    
+    print(f"training {model.num_parameters():,} parameters")
     trainer.train()
-    trainer.save_model("tmp")
-    tokenizer.save_pretrained("tmp")
+    trainer.save_model("rw_9m_policy_bc_4m_5e_bs2048")
+    tokenizer.save_pretrained("rw_9m_policy_bc_4m_5e_bs2048")
 
 if __name__ == "__main__":
     # set the wandb project where this run will be logged

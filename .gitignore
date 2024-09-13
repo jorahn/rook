@@ -1,3 +1,4 @@
+save_*
 *.zst
 tmp/
 wandb/
