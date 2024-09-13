@@ -36,20 +36,11 @@
 #<|policy|>.r......p.....k......p..PPp...p...r...P.....B.......KP..R.......w-...-.1..33.+e2d3. f2f4. b5b6. a1b1. e2f3.+-1.27 -3.33 -3.43 -3.11 -3.85+e2d3
 
 
-import re, json
-from argparse import ArgumentParser
+import re
 
-from tqdm import tqdm
 from datasets import Dataset
 
 from src.tokenizer.tokenizer import SPECIAL_TOKENS
-
-parser = ArgumentParser()
-parser.add_argument("-i", "--input", help="Input text file with ROOK data format")
-parser.add_argument("-t", "--type", choices=["bc", "av", "sv"], help="Convert to bc|av|sv policy data")
-parser.add_argument("-c", "--cot", action="store_true", help="Add COT data")
-parser.add_argument("-o", "--output", help="Output file")
-args = parser.parse_args()
 
 
 def create_tuple_to_dict_converter(config):
@@ -129,7 +120,7 @@ def process_rook(input_string):
     return (fen, moves, evaluation, best_move)
 
 
-def make_policy_bc_data(input_file_obj, probas=False, mtl=False, cot=False, cot_delimiter="+"):
+def make_policy_bc_data(input_file_obj, probas=False, mtl=False, cot=False, cot_delimiter="+", debug=False):
     # Behavior Cloning (BC) dataset
 
     # input sample: "P: 1r6/p5k1/5p2/PPp3p1/2r3P1/4B3/4KP2/R7 w - - 1 33 M: e2d3 f2f4 b5b6 a1b1 e2f3 E: -1.27 -3.33 -3.43 -3.11 -3.85 B: e2d3"
@@ -167,21 +158,13 @@ def make_policy_bc_data(input_file_obj, probas=False, mtl=False, cot=False, cot_
 
     dict_gen = create_dict_generator(tuple_gen, config)
 
-    #ds = Dataset.from_iterable(dict_gen)
-    ds = list(dict_gen)
+    ds = list(dict_gen) if debug else Dataset.from_iterable(dict_gen)
     print(ds)
     return ds
 
 def make_policy_sv_data():
-    pass
+    raise NotImplementedError("Not implemented yet")
 
 def make_policy_av_data():
-    pass
+    raise NotImplementedError("Not implemented yet")
 
-if __name__ == "__main__":
-    with open(args.output, "w") as out:
-        with open(args.input, "r") as inp:
-            for line in tqdm(inp):
-                proc = process_rook(line.strip(), cot=args.cot)
-                out.write(proc + "\n")
-    print(f"Result written to {args.output}")
