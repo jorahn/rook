@@ -59,7 +59,7 @@ def run_training(args):
 
     training_args = TrainingArguments(
         # 2 devices
-        per_device_train_batch_size=64,  # bs 1024 in the paper on 4x 95G tpu, try to fit as much as possible ...
+        per_device_train_batch_size=1024,  # bs 1024 in the paper on 4x 95G tpu, try to fit as much as possible ...
         gradient_accumulation_steps=1,    # ... else increase this
         gradient_checkpointing=False,     # save memory if needed, reduces speed
         bf16=True,
@@ -93,6 +93,7 @@ def run_training(args):
 
     trainer.train()
     trainer.save_model("tmp")
+    tokenizer.save_pretrained("tmp")
 
 if __name__ == "__main__":
     # set the wandb project where this run will be logged
