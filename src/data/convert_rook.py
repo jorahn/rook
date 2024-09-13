@@ -45,8 +45,8 @@ from datasets import Dataset
 from src.tokenizer.tokenizer import SPECIAL_TOKENS
 
 parser = ArgumentParser()
-parser.add_argument("-i", "--input", help="Input file")
-parser.add_argument("-t", "--type", help="Convert BC|SV|AV policy data")
+parser.add_argument("-i", "--input", help="Input text file with ROOK data format")
+parser.add_argument("-t", "--type", choices=["bc", "av", "sv"], help="Convert to bc|av|sv policy data")
 parser.add_argument("-c", "--cot", action="store_true", help="Add COT data")
 parser.add_argument("-o", "--output", help="Output file")
 args = parser.parse_args()
