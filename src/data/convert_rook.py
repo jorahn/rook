@@ -74,7 +74,7 @@ def create_tuple_to_dict_converter(config):
 def create_dict_generator(tuple_generator, config):
     """ create a generator that converts tuples to dictionaries """
     converter = create_tuple_to_dict_converter(config)
-    return (converter(t) for t in tuple_generator)
+    return (converter(t) for t in tuple_generator if t)
 
 def yield_proc_lines(f, proc_fn):
     """ iterate over lines in file-object, process them and yield """
@@ -106,7 +106,7 @@ def process_rook(input_string):
         _, fen, moves, evaluation, best_move = input_string.split(":")
     except:
         print("Error processing input string:", input_string)
-        return ""
+        return None
     fen = process_fen(fen[:-1].strip())
 
     # every move will become a single token, so no padding
@@ -142,7 +142,7 @@ def make_policy_bc_data(input_file_obj, probas=False, mtl=False, cot=False, cot_
 
     config = {
         "text": lambda fen, *rest: f"{prefix}{fen}{cls_token}",
-        "labels": 3
+        "label": 3
     }
 
     if cot:
@@ -158,8 +158,8 @@ def make_policy_bc_data(input_file_obj, probas=False, mtl=False, cot=False, cot_
 
     dict_gen = create_dict_generator(tuple_gen, config)
 
-    ds = list(dict_gen) if debug else Dataset.from_iterable(dict_gen)
-    print(ds)
+    ds = list(dict_gen)
+    if not debug: ds = Dataset.from_list(ds)
     return ds
 
 def make_policy_sv_data():

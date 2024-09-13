@@ -10,11 +10,6 @@ from tokenizers.models import BPE
 import json
 from argparse import ArgumentParser
 
-parser = ArgumentParser()
-parser.add_argument("-i", "--input", help="Input file")
-parser.add_argument("-o", "--output", help="Output file")
-args = parser.parse_args()
-
 SPECIAL_TOKENS = {
     "POLICY_TASK": "[POLICY]",
     "ENVIRONMENT_TASK": "[ENV]",
@@ -43,6 +38,11 @@ def make_tokenizer(vocab_path):
     return fast_tokenizer
 
 if __name__ == "__main__":
+    parser = ArgumentParser()
+    parser.add_argument("-i", "--input", help="Input file")
+    parser.add_argument("-o", "--output", help="Output file")
+    args = parser.parse_args()
+    
     tokenizer = make_tokenizer(args.input)
     tokenizer.save_pretrained(args.output)
     print(f"Tokenizer saved to {args.output}")
