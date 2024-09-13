@@ -40,12 +40,57 @@ import re, json
 from argparse import ArgumentParser
 
 from tqdm import tqdm
+from datasets import Dataset
+
+from src.tokenizer.tokenizer import SPECIAL_TOKENS
 
 parser = ArgumentParser()
 parser.add_argument("-i", "--input", help="Input file")
-parser.add_argument("-d", "--drop_moves", action="store_true", help="Drop moves")
-parser.add_argument("-e", "--drop_evaluation", action="store_true", help="Drop evaluation")
+parser.add_argument("-t", "--type", help="Convert BC|SV|AV policy data")
+parser.add_argument("-c", "--cot", action="store_true", help="Add COT data")
+parser.add_argument("-o", "--output", help="Output file")
 args = parser.parse_args()
+
+
+def create_tuple_to_dict_converter(config):
+    """
+    extract values from tuple based on config
+    allow processing of values with functions
+
+    # Configuration 1: Simple mapping
+    config1 = {
+        "name": 0,
+        "age": 1,
+        "city": 2
+    }
+
+    # Configuration 2: Dropping a field and combining others
+    config2 = {
+        "full_name": lambda first, last, *rest: f"{first} {last}",
+        "location": 2  # Assuming city is at index 2
+    }
+    """
+    def converter(tuple_item):
+        result = {}
+        for key, value in config.items():
+            if callable(value):
+                result[key] = value(*tuple_item)
+            elif isinstance(value, int):
+                result[key] = tuple_item[value]
+        return result
+    return converter
+
+def create_dict_generator(tuple_generator, config):
+    """ create a generator that converts tuples to dictionaries """
+    converter = create_tuple_to_dict_converter(config)
+    return (converter(t) for t in tuple_generator)
+
+def yield_proc_lines(f, proc_fn):
+    """ iterate over lines in file-object, process them and yield """
+    for line in f:
+        yield proc_fn(line.strip())
+
+
 
 def position_padding(match, padding_char="."):
     return padding_char * int(match.group())
@@ -65,7 +110,7 @@ def process_fen(fen):
     fullmove = fullmove.ljust(3, ".")
     return "".join([position, turn, castling, en_passant, halfmove, fullmove])
 
-def process_rook(input_string, delimiter="+", drop_moves=False, drop_evaluation=False):
+def process_rook(input_string):
     try:
         _, fen, moves, evaluation, best_move = input_string.split(":")
     except:
@@ -81,20 +126,62 @@ def process_rook(input_string, delimiter="+", drop_moves=False, drop_evaluation=
     # every move will become a single token, so no padding
     best_move = best_move.strip()
 
-    result = delimiter.join(
-        ["<|policy|>"+fen] + 
-        [moves if not drop_moves else []] + 
-        [evaluation if not drop_evaluation else []] + 
-        [best_move]
-    )
-    return result
+    return (fen, moves, evaluation, best_move)
 
+
+def make_policy_bc_data(input_file_obj, probas=False, mtl=False, cot=False, cot_delimiter="+"):
+    # Behavior Cloning (BC) dataset
+
+    # input sample: "P: 1r6/p5k1/5p2/PPp3p1/2r3P1/4B3/4KP2/R7 w - - 1 33 M: e2d3 f2f4 b5b6 a1b1 e2f3 E: -1.27 -3.33 -3.43 -3.11 -3.85 B: e2d3"
+    
+    # output dataset sample:
+    # - text plain: ".r......p.....k......p..PPp...p...r...P.....B.......KP..R.......w-...-.1..33."
+    # - text cot:   ".r......p.....k......p..PPp...p...r...P.....B.......KP..R.......w-...-.1..33.+e2d3.f2f4.b5b6.a1b1.e2f3+-1.27  .-3.33  .-3.43  .-3.11  .-3.85   "
+    # - text mtl:   "[POLICY]" + plain|cot
+
+    # - labels plain: "e2d3" -> one-hot-encoded best move
+    # - labels probas: probabilities for all moves (top5 evals -> rescale for current player -> softmax)
+
+    tuple_gen = yield_proc_lines(input_file_obj, process_rook)
+
+    # extract fen as "text" and best move as "labels" from `process_rook` output
+    # append CLS token to "text"
+    cls_token = "[CLS]"
+    prefix = SPECIAL_TOKENS["POLICY_TASK"] if mtl else ""
+
+    config = {
+        "text": lambda fen, *rest: f"{prefix}{fen}{cls_token}",
+        "labels": 3
+    }
+
+    if cot:
+        # insert COT data (moves, evaluations) into "text"
+        config["text"] = lambda fen, moves, evaluation, _: f"{prefix}{fen}{cot_delimiter}{moves}{cot_delimiter}{evaluation}{cls_token}"
+
+    if probas:
+        # based on current player (w|b) from FEN
+        # rescale top 5 moves & evals to [0, 100] (worst, best)
+        # add all remaining possible moves with 0 (worst)
+        # and apply softmax
+        raise NotImplementedError("Probas not implemented yet")
+
+    dict_gen = create_dict_generator(tuple_gen, config)
+
+    #ds = Dataset.from_iterable(dict_gen)
+    ds = list(dict_gen)
+    print(ds)
+    return ds
+
+def make_policy_sv_data():
+    pass
+
+def make_policy_av_data():
+    pass
 
 if __name__ == "__main__":
-    out_fn = args.input.replace(".txt", "_v2.txt")
-    with open(out_fn, "w") as out:
+    with open(args.output, "w") as out:
         with open(args.input, "r") as inp:
             for line in tqdm(inp):
-                proc = process_rook(line.strip(), drop_moves=args.drop_moves, drop_evaluation=args.drop_evaluation)
+                proc = process_rook(line.strip(), cot=args.cot)
                 out.write(proc + "\n")
-    print(f"Result written to {out_fn}")
+    print(f"Result written to {args.output}")
