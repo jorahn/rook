@@ -25,6 +25,7 @@ def compute_metrics(eval_pred):
 
 def run_training(args):
     tokenizer = make_tokenizer(args.tk)
+    tokenizer.model_max_length = 78
     def encode(examples):
         return tokenizer(examples["text"], truncation=True, padding="max_length")
 
