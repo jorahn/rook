@@ -37,9 +37,15 @@
 
 
 import re, json
+from argparse import ArgumentParser
 
 from tqdm import tqdm
 
+parser = ArgumentParser()
+parser.add_argument("-i", "--input", help="Input file")
+parser.add_argument("-d", "--drop_moves", action="store_true", help="Drop moves")
+parser.add_argument("-e", "--drop_evaluation", action="store_true", help="Drop evaluation")
+args = parser.parse_args()
 
 def position_padding(match, padding_char="."):
     return padding_char * int(match.group())
@@ -83,32 +89,12 @@ def process_rook(input_string, delimiter="+", drop_moves=False, drop_evaluation=
     )
     return result
 
-# FEN Processing Example usage
-input_string = "1r6/p5k1/5p2/PPp3p1/2r3P1/4B3/4KP2/R7 w - - 1 33"
-result = process_fen(input_string)
-print(len(result), result)
 
-input_string = "rnbqkbnr/pppppppp/8/4P3/8/8/PPPP1PPP/RNBQKBNR w KQkq - 1 3"
-result = process_fen(input_string)
-print(len(result), result)
-
-# FULL DATA Processing Example usage
-input_string = "P: 1r6/p5k1/5p2/PPp3p1/2r3P1/4B3/4KP2/R7 w - - 1 33                                          M: e2d3 f2f4 b5b6 a1b1 e2f3      E: -1.27 -3.33 -3.43 -3.11 -3.85           B: e2d3"
-result = process_rook(input_string)
-print(len(result), result)
-
-input_string = "P: rnbqkbnr/pppppppp/8/4P3/8/8/PPPP1PPP/RNBQKBNR w KQkq - 1 3                                M: g1f3 b1c3 c2c3 f2f4 d2d4      E: 0.8 0.71 0.65 0.58 0.98                 B: d2d4"
-result = process_rook(input_string)
-print(len(result), result)
-
-print("-"*100)
-#ds = "rook/lichess_train[:4000000].txt"
-ds = "rook/rook_train_709k.txt"
-#ds = "rook/rook_train_260k.txt"
-#ds = "rook/rook_val_500.txt"
-with open(ds, "r") as f:
-    for line in tqdm(f.readlines()):
-        line = line.strip()
-        if line and len(line) > 10:
-            result = process_rook(line)
-
+if __name__ == "__main__":
+    out_fn = args.input.replace(".txt", "_v2.txt")
+    with open(out_fn, "w") as out:
+        with open(args.input, "r") as inp:
+            for line in tqdm(inp):
+                proc = process_rook(line.strip(), drop_moves=args.drop_moves, drop_evaluation=args.drop_evaluation)
+                out.write(proc + "\n")
+    print(f"Result written to {out_fn}")
