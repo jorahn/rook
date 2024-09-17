@@ -13,6 +13,7 @@ Re-implementation of https://arxiv.org/pdf/2402.04494 (focus on Figure A6)
 
 Experiments:
 - Text Classification (instead of CLM in `rook`)
+  - switch names rook and rookworld. classification model cannot be world model
 - Dataset: Lichess Games + Stockfish Selfplay + Optional Puzzles + Optional COT
 - Context: 78|79 without, ~170 with COT
 - Multi-Task Tokenization (Arbiter)
