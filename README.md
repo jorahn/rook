@@ -22,4 +22,16 @@ Evals:
 - Action Accuracy
 - Puzzle Accuracy
 
-+ Arbiter -> RookWorld
+--- 
+
+```
+|- data.py        Load/prepare dataset for training and evaluation
+|- eval.py        Evaluate checkpoint on actions, puzzles, checkmate-in-one
+|- train.py       Train from scratch
+|- src/
+   |- model.py    Model & Tokenizer definition
+   |- policy.py   Inference code for evals & (TODO) data generation
+   |- const.py    Constant values like Action Space and Vocab
+   |- utils/      Data conversion scripts
+   |- data/       Train & Eval Data
+```

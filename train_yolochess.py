@@ -11,11 +11,11 @@ import numpy as np
 
 from src.tokenizer.tokenizer import make_tokenizer
 from src.model.model import make_model, make_config
+from dev.rook.src.utils.common import process_fen
 
 parser = ArgumentParser("Run training")
 parser.add_argument("-ds", default="jrahn/rw_policy_bc_709k", help="HF Dataset name")
-parser.add_argument("-tk", default="src/tokenizer/rook_vocab.json", help="Tokenizer vocab file")
-parser.add_argument("-n", default="rook_policy_bc", help="Run name")
+parser.add_argument("-tk", default="src/tokenizer/rookworld_vocab.json", help="Tokenizer vocab file")
 args = parser.parse_args()
 
 def compute_metrics(eval_pred):
@@ -23,6 +23,8 @@ def compute_metrics(eval_pred):
     predictions = np.argmax(logits, axis=-1)
     return {"accuracy": np.mean(predictions == labels)}
 
+def process_yolochess(example):
+    return {"text": process_fen(example["fen"])+"[CLS]", "label": example["move"]}
 
 def run_training(args):
     tokenizer = make_tokenizer(args.tk)
@@ -31,11 +33,20 @@ def run_training(args):
         return tokenizer(examples["text"], truncation=True, padding="max_length")
 
     dataset = load_dataset(args.ds)
+    dataset = dataset["train"].select(range(100_000_000))
+    dataset = dataset.map(process_yolochess)
+    dataset = dataset.class_encode_column("label")
     dataset = dataset.map(encode, batched=True)
+    dataset = dataset.train_test_split(test_size=min(len(dataset)*0.1, 20_000), seed=42)
+    print(dataset)
+    label_list = list(set(dataset["train"].unique("label") + dataset["test"].unique("label")))
+    label_list.sort()
+    num_labels = len(label_list)
+    label_to_id = {v: i for i, v in enumerate(label_list)}
 
-    model = make_model(
+    config = make_config(
         vocab_size=2048,             # 32 should suffice for FEN encoding + 1968 actions for av predictor
-                                    # padding to the multiple of 128 -> 2048
+                                    # padding to the next power of 2 -> 2048
         pad_token_id=tokenizer.pad_token_id,
         hidden_size=256,             # embedding dimension from the paper
         intermediate_size=1024,      # not specified
@@ -46,8 +57,13 @@ def run_training(args):
         #attn_implementation="flash_attention_2",
         #device_map="auto",
         device="cuda",
+        num_labels=num_labels,
         finetuning_task="text-classification",
     )
+
+    model = make_model(config)
+    model.config.label2id = label_to_id
+    model.config.id2label = {id: label for label, id in label_to_id.items()}
 
     training_args = TrainingArguments(
         # 2 devices
@@ -61,16 +77,16 @@ def run_training(args):
         output_dir="tmp",
         per_device_eval_batch_size=256,
         eval_strategy="steps",
-        eval_steps=250,
-        num_train_epochs=5.0,            # 2.7-3.2 in the paper for ablations, 5.4 for full training
+        eval_steps=500,
+        num_train_epochs=2.0,            # 2.7-3.2 in the paper for ablations, 5.4 for full training
         #max_steps=5e6,                    # 5e6 in the paper, 40m samples, bs 1024 -> 128 Epochs !?!
-        lr_scheduler_type="cosine",
+        lr_scheduler_type="constant",
         warmup_steps=500,
         save_strategy="epoch",
         log_level="error",
         #report_to="none",
         report_to="wandb",
-        run_name=args.n,
+        run_name=args.ds.split("/")[-1]+"_100m_2e_bs2048_lrconst",
     )
 
     trainer = Trainer(
@@ -84,13 +100,14 @@ def run_training(args):
         )
     
     print(f"training {model.num_parameters():,} parameters")
+    
     trainer.train()
-    trainer.save_model(args.n)
-    tokenizer.save_pretrained(args.n)
+    trainer.save_model("rook_9m_policy_bc_twic100m_2e_bs2048_lrconst")
+    tokenizer.save_pretrained("rook_9m_policy_bc_twic100m_2e_bs2048_lrconst")
 
 if __name__ == "__main__":
     # set the wandb project where this run will be logged
-    os.environ["WANDB_PROJECT"]="RookWorld"
+    os.environ["WANDB_PROJECT"]="ROOK"
     # turn off watch to log faster
     os.environ["WANDB_WATCH"]="false"
 

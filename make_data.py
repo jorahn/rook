@@ -1,6 +1,6 @@
 from argparse import ArgumentParser
 
-from src.data.convert_rook import make_policy_bc_data, make_policy_sv_data, make_policy_av_data
+from dev.rook.src.utils.convert_rook import make_policy_bc_data, make_policy_sv_data, make_policy_av_data
 
 parser = ArgumentParser("Convert ROOK data to RookWorld policy training data")
 parser.add_argument("filename", help="Input text file with ROOK data format")

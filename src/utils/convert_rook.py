@@ -33,15 +33,14 @@
 #P: rnbqkbnr/pppppppp/8/4P3/8/8/PPPP1PPP/RNBQKBNR w KQkq - 1 3                                M: g1f3 b1c3 c2c3 f2f4 d2d4      E: 0.8 0.71 0.65 0.58 0.98                 B: d2d4
 
 # ROOK v2
-#<|policy|>.r......p.....k......p..PPp...p...r...P.....B.......KP..R.......w-...-.1..33.+e2d3. f2f4. b5b6. a1b1. e2f3.+-1.27 -3.33 -3.43 -3.11 -3.85+e2d3
+#.r......p.....k......p..PPp...p...r...P.....B.......KP..R.......w-...-.1..33.+e2d3. f2f4. b5b6. a1b1. e2f3.+-1.27 -3.33 -3.43 -3.11 -3.85+e2d3[CLS]
 
 
 import re
 
 from datasets import Dataset
 
-from src.tokenizer.tokenizer import SPECIAL_TOKENS
-from src.data.common import process_fen
+from src.utils.common import process_fen
 
 
 def create_tuple_to_dict_converter(config):
@@ -102,7 +101,7 @@ def process_rook(input_string):
     return (fen, moves, evaluation, best_move)
 
 
-def make_policy_bc_data(input_file_obj, probas=False, mtl=False, cot=False, cot_delimiter="+", debug=False):
+def make_policy_bc_data(input_file_obj, probas=False, cot=False, cot_delimiter="+", debug=False):
     # Behavior Cloning (BC) dataset
 
     # input sample: "P: 1r6/p5k1/5p2/PPp3p1/2r3P1/4B3/4KP2/R7 w - - 1 33 M: e2d3 f2f4 b5b6 a1b1 e2f3 E: -1.27 -3.33 -3.43 -3.11 -3.85 B: e2d3"
@@ -110,26 +109,24 @@ def make_policy_bc_data(input_file_obj, probas=False, mtl=False, cot=False, cot_
     # output dataset sample:
     # - text plain: ".r......p.....k......p..PPp...p...r...P.....B.......KP..R.......w-...-.1..33."
     # - text cot:   ".r......p.....k......p..PPp...p...r...P.....B.......KP..R.......w-...-.1..33.+e2d3.f2f4.b5b6.a1b1.e2f3+-1.27  .-3.33  .-3.43  .-3.11  .-3.85   "
-    # - text mtl:   "[POLICY]" + plain|cot
 
-    # - labels plain: "e2d3" -> one-hot-encoded best move
-    # - labels probas: probabilities for all moves (top5 evals -> rescale for current player -> softmax)
+    # - label plain: "e2d3" -> one-hot-encoded best move
+    # - label probas: probabilities for all moves (top5 evals -> rescale for current player -> softmax)
 
     tuple_gen = yield_proc_lines(input_file_obj, process_rook)
 
-    # extract fen as "text" and best move as "labels" from `process_rook` output
+    # extract fen as "text" and best move as "label" from `process_rook` output
     # append CLS token to "text"
     cls_token = "[CLS]"
-    prefix = SPECIAL_TOKENS["POLICY_TASK"] if mtl else ""
 
     config = {
-        "text": lambda fen, *rest: f"{prefix}{fen}{cls_token}",
+        "text": lambda fen, *rest: f"{fen}{cls_token}",
         "label": 3
     }
 
     if cot:
         # insert COT data (moves, evaluations) into "text"
-        config["text"] = lambda fen, moves, evaluation, _: f"{prefix}{fen}{cot_delimiter}{moves}{cot_delimiter}{evaluation}{cls_token}"
+        config["text"] = lambda fen, moves, evaluation, _: f"{fen}{cot_delimiter}{moves}{cot_delimiter}{evaluation}{cls_token}"
 
     if probas:
         # based on current player (w|b) from FEN
