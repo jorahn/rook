@@ -4,5 +4,6 @@ tokenizer
 accelerate
 torch
 tqdm
+flash-attn
 
 pytest

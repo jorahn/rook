@@ -6,36 +6,42 @@ from argparse import ArgumentParser
 import wandb
 from transformers import Trainer, TrainingArguments
 import torch
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk, Dataset, DatasetDict
 import numpy as np
 
-from src.tokenizer.tokenizer import make_tokenizer
-from src.model.model import make_model, make_config
+from src.model import make_model, make_tokenizer
 
-parser = ArgumentParser("Run training")
-parser.add_argument("-ds", default="jrahn/rw_policy_bc_709k", help="HF Dataset name")
-parser.add_argument("-tk", default="src/tokenizer/rook_vocab.json", help="Tokenizer vocab file")
-parser.add_argument("-n", default="rook_policy_bc", help="Run name")
-args = parser.parse_args()
 
 def compute_metrics(eval_pred):
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
     return {"accuracy": np.mean(predictions == labels)}
 
-
 def run_training(args):
-    tokenizer = make_tokenizer(args.tk)
-    tokenizer.model_max_length = 78
+    tokenizer = make_tokenizer()
     def encode(examples):
         return tokenizer(examples["text"], truncation=True, padding="max_length")
 
-    dataset = load_dataset(args.ds)
+    if os.path.exists(args.ds):
+        dataset = load_from_disk(args.ds)
+    else:
+        dataset = load_dataset(args.ds)
+    if isinstance(dataset, Dataset):
+        dataset = DatasetDict({"train": dataset})
+    if args.val:
+        if os.path.exists(args.val):
+            val_dataset = load_from_disk(args.val)
+        else:
+            val_dataset = load_dataset(args.val)
+        dataset["test"] = val_dataset["test"]
+    
+    dataset = dataset.select(range(args.max_steps * 1024 * 2))  # limit to max_steps * batch_size * devices
     dataset = dataset.map(encode, batched=True)
+    print(dataset)
 
     model = make_model(
         vocab_size=2048,             # 32 should suffice for FEN encoding + 1968 actions for av predictor
-                                    # padding to the multiple of 128 -> 2048
+                                     # padding to the multiple of 128 -> 2048
         pad_token_id=tokenizer.pad_token_id,
         hidden_size=256,             # embedding dimension from the paper
         intermediate_size=1024,      # not specified
@@ -43,7 +49,7 @@ def run_training(args):
         num_attention_heads=8,       # as in the paper
         max_position_embeddings=78,  # as in the paper (for bc and sv predictors, +1 for av)
         torch_dtype=torch.bfloat16,
-        #attn_implementation="flash_attention_2",
+        attn_implementation="flash_attention_2",
         #device_map="auto",
         device="cuda",
         finetuning_task="text-classification",
@@ -56,20 +62,18 @@ def run_training(args):
         gradient_checkpointing=False,     # save memory if needed, reduces speed
         bf16=True,
         learning_rate=4e-4,               # as in the paper
-        #optim="adamw_torch_fused",
         torch_compile=True,
-        output_dir="tmp",
+        output_dir=args.run,
         per_device_eval_batch_size=256,
         eval_strategy="steps",
-        eval_steps=250,
-        num_train_epochs=5.0,            # 2.7-3.2 in the paper for ablations, 5.4 for full training
-        #max_steps=5e6,                    # 5e6 in the paper, 40m samples, bs 1024 -> 128 Epochs !?!
+        eval_steps=500,
+        #num_train_epochs=3.0,            # 2.7-3.2 in the paper for ablations, 5.4 for full training
+        max_steps=args.max_steps,         # 5e6 in the paper, 40m samples, bs 1024 -> 128 Epochs !?!
         lr_scheduler_type="cosine",
         warmup_steps=500,
         save_strategy="epoch",
         log_level="error",
-        #report_to="none",
-        report_to="wandb",
+        report_to="wandb" if args.run else "none",
         run_name=args.n,
     )
 
@@ -85,12 +89,20 @@ def run_training(args):
     
     print(f"training {model.num_parameters():,} parameters")
     trainer.train()
-    trainer.save_model(args.n)
-    tokenizer.save_pretrained(args.n)
+    trainer.save_model(args.run)
+    tokenizer.save_pretrained(args.run)
+
 
 if __name__ == "__main__":
+    parser = ArgumentParser("Run training")
+    parser.add_argument("dataset", help="Local or remote HF Dataset name")
+    parser.add_argument("-val", help="Local or remote HF Dataset name for validation")
+    parser.add_argument("-max_steps", help="Max Steps")
+    parser.add_argument("-run", default="rook_policy_bc", help="W&B run name, None for no logging")
+    args = parser.parse_args()
+
     # set the wandb project where this run will be logged
-    os.environ["WANDB_PROJECT"]="RookWorld"
+    os.environ["WANDB_PROJECT"]="ROOK"
     # turn off watch to log faster
     os.environ["WANDB_WATCH"]="false"
 
