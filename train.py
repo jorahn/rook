@@ -35,7 +35,7 @@ def run_training(args):
             val_dataset = load_dataset(args.val)
         dataset["test"] = val_dataset["test"]
     
-    dataset = dataset.select(range(args.max_steps * 1024 * 2))  # limit to max_steps * batch_size * devices
+    dataset["train"] = dataset["train"].select(range(40_000_000))
     dataset = dataset.map(encode, batched=True)
     print(dataset)
 
@@ -63,12 +63,13 @@ def run_training(args):
         bf16=True,
         learning_rate=4e-4,               # as in the paper
         torch_compile=True,
-        output_dir=args.run,
-        per_device_eval_batch_size=256,
+        output_dir="checkpoints/save_"+args.run,
+        per_device_eval_batch_size=512,
         eval_strategy="steps",
         eval_steps=500,
-        #num_train_epochs=3.0,            # 2.7-3.2 in the paper for ablations, 5.4 for full training
-        max_steps=args.max_steps,         # 5e6 in the paper, 40m samples, bs 1024 -> 128 Epochs !?!
+        eval_on_start=True,
+        num_train_epochs=5.0,             # 2.7-3.2 in the paper for ablations, 5.4 for full training
+        #max_steps=args.max_steps,        # 5e6 in the paper, 40m samples, bs 1024 -> 128 Epochs !?!
         lr_scheduler_type="cosine",
         warmup_steps=500,
         save_strategy="epoch",
@@ -89,8 +90,8 @@ def run_training(args):
     
     print(f"training {model.num_parameters():,} parameters")
     trainer.train()
-    trainer.save_model(args.run)
-    tokenizer.save_pretrained(args.run)
+    trainer.save_model("checkpoints/save_"+args.run)
+    tokenizer.save_pretrained("checkpoints/save_"+args.run)
 
 
 if __name__ == "__main__":
