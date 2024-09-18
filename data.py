@@ -10,11 +10,13 @@ from src.utils.common import process_fen
 parser = ArgumentParser()
 parser.add_argument("dataset", type=str, help="Path to dataset")
 parser.add_argument("--split", type=str, default="train", help="Dataset split to use")
+parser.add_argument("--fen_column", type=str, default="FEN", help="Column name for FEN")
+parser.add_argument("--move_column", type=str, default="Move", help="Column name for Move")
 parser.add_argument("--push_to_hub", type=str, help="Push dataset to Hugging Face Hub")
 args = parser.parse_args()
 
 
-def load_csv_dataset(fen_column="FEN", move_column="Move"):
+def load_csv_dataset(fen_column, move_column):
     data = load_dataset("csv", data_files=args.dataset.split(","))
     data = data.map(
         lambda x: {"text": process_fen(x[fen_column])+"[CLS]", "label": x[move_column]},
@@ -22,7 +24,7 @@ def load_csv_dataset(fen_column="FEN", move_column="Move"):
     )
     return data
 
-def load_hf_dataset(fen_column="FEN", move_column="Move"):
+def load_hf_dataset(fen_column, move_column):
     data = load_dataset(args.dataset, split=args.split)
     data = data.map(
         lambda x: {"text": process_fen(x[fen_column])+"[CLS]", "label": x[move_column]},
@@ -31,9 +33,9 @@ def load_hf_dataset(fen_column="FEN", move_column="Move"):
     return data
 
 if ".csv" in args.dataset:
-    data = load_csv_dataset()
+    data = load_csv_dataset(fen_column=args.fen_column, move_column=args.move_column)
 else:
-    data = load_hf_dataset()
+    data = load_hf_dataset(fen_column=args.fen_column, move_column=args.move_column)
 
 print(data)
 

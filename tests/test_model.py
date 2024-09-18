@@ -2,7 +2,6 @@ from src.model import make_model, make_tokenizer
 
 def test_make_model():
     model = make_model({
-        "vocab_size": 2048,
         "pad_token_id": 0,
         "hidden_size": 256,
         "intermediate_size": 1024,
@@ -10,9 +9,9 @@ def test_make_model():
         "num_attention_heads": 8,
         "max_position_embeddings": 78,
     })
-    assert model.config.vocab_size == 2048
+    assert model.config.vocab_size == 128
     assert model.config.num_labels == 1968 # data/action_space.json
-    assert model.num_parameters() == 9_421_056
+    assert model.num_parameters() == 8_929_536
 
 def test_make_tokenizer():
     tokenizer = make_tokenizer()

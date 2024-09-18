@@ -7,8 +7,7 @@ from argparse import ArgumentParser
 import json
 import io
 
-from transformers import pipeline
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk, DatasetDict
 import evaluate
 from evaluate import evaluator
 import torch
@@ -17,10 +16,12 @@ import pandas as pd
 from tqdm import tqdm
 
 from src.policy import BCChessPolicy
+from src.model import RookTokenizer
 
 
 parser = ArgumentParser()
 parser.add_argument("checkpoint", type=str, help="Path to model & tokenizer checkpoint")
+parser.add_argument("--filter_illegal", action="store_true", help="Filter illegal moves during evaluation")
 parser.add_argument("--eval_type", type=str, choices=["action", "puzzle", "checkmate"], default="action", help="Type of evaluation to perform")
 parser.add_argument("--eval_dataset", type=str, help="Path to evaluation dataset")
 parser.add_argument("--eval_split", type=str, default="test", help="Dataset split to evaluate")
@@ -30,22 +31,33 @@ args = parser.parse_args()
 
 if args.eval_type == "action":
     # expect preprocessed (`process_fen()`) dataset with "text" and "label" columns
-    data = load_dataset(args.eval_dataset, split=args.eval_split).select(range(args.num_samples))
-    task_evaluator = evaluator("text-classification")
-    policy = BCChessPolicy(args.checkpoint, args.checkpoint, batch_size=args.batch_size)
-    eval_results = task_evaluator.compute(
-        model_or_pipeline=policy._pipeline,
-        data=data,
-    )
+    if os.path.exists(args.eval_dataset):
+        data = load_from_disk(args.eval_dataset)
+        if isinstance(data, DatasetDict):
+            data = data["train"]
+    else:
+        data = load_dataset(args.eval_dataset, split=args.eval_split)
+    if args.num_samples > 0:
+        data = data.select(range(args.num_samples))
+
+    tokenizer = RookTokenizer.from_pretrained(args.checkpoint)
+    policy = BCChessPolicy(args.checkpoint, tokenizer, batch_size=args.batch_size, filter_illegal=args.filter_illegal)
+    eval_results = {"total": 0, "correct": 0}
+    for example in tqdm(data):
+        prediction = policy.play(example["text"])
+        if prediction[0] == example["label"]:
+            eval_results["correct"] += 1
+        eval_results["total"] += 1
     print("-"*50)
     print("Action Evaluation results:")
-    print(f"Accuracy: {eval_results['accuracy']:.2%}")
+    print(f"Accuracy: {eval_results['correct'] / eval_results['total']:.2%}")
     print(eval_results)
 
 elif args.eval_type == "puzzle":
     # expect csv file with columns "FEN" and "Moves" (lichess puzzle format)
     data = pd.read_csv(args.eval_dataset)
-    policy = BCChessPolicy(args.checkpoint, args.checkpoint, batch_size=args.batch_size)
+    tokenizer = RookTokenizer.from_pretrained(args.checkpoint)
+    policy = BCChessPolicy(args.checkpoint, tokenizer, batch_size=args.batch_size)
 
     eval_results = {
         "correct_moves": 0,
@@ -80,8 +92,9 @@ elif args.eval_type == "checkmate":
     data = data["examples"]
     if args.num_samples:
         data = data[:args.num_samples]
-    
-    policy = BCChessPolicy(args.checkpoint, args.checkpoint, batch_size=args.batch_size)
+
+    tokenizer = RookTokenizer.from_pretrained(args.checkpoint)
+    policy = BCChessPolicy(args.checkpoint, tokenizer, batch_size=args.batch_size)
     
     eval_results = {
         "correct_moves": 0,
@@ -102,3 +115,4 @@ elif args.eval_type == "checkmate":
     print("Checkmate Evaluation results:")
     print(f"Accuracy: {eval_results['correct_moves']/eval_results['total_moves']:.2%}")
     print(eval_results)
+

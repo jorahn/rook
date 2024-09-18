@@ -22,10 +22,24 @@ def run_training(args):
     def encode(examples):
         return tokenizer(examples["text"], truncation=True, padding="max_length")
 
-    if os.path.exists(args.ds):
-        dataset = load_from_disk(args.ds)
+    model = make_model({
+        "pad_token_id": tokenizer.pad_token_id,
+        "hidden_size": 256,             # embedding dimension from the paper
+        "intermediate_size": 1024,      # not specified
+        "num_hidden_layers": 8,         # as in the paper
+        "num_attention_heads": 8,       # as in the paper
+        "max_position_embeddings": 78,  # as in the paper (for bc and sv predictors, +1 for av)
+        "torch_dtype": torch.bfloat16,
+        #"attn_implementation": "flash_attention_2",
+        #device_map="auto",
+        "device": "cuda",
+        "finetuning_task": "text-classification",
+    })
+    
+    if os.path.exists(args.dataset):
+        dataset = load_from_disk(args.dataset)
     else:
-        dataset = load_dataset(args.ds)
+        dataset = load_dataset(args.dataset)
     if isinstance(dataset, Dataset):
         dataset = DatasetDict({"train": dataset})
     if args.val:
@@ -33,27 +47,24 @@ def run_training(args):
             val_dataset = load_from_disk(args.val)
         else:
             val_dataset = load_dataset(args.val)
-        dataset["test"] = val_dataset["test"]
+        
+        if isinstance(val_dataset, DatasetDict):
+            split = "test" if "test" in val_dataset else "train"
+            dataset["test"] = val_dataset[split]
+        else:
+            dataset["test"] = val_dataset
     
-    dataset["train"] = dataset["train"].select(range(40_000_000))
+    if args.max_samples:
+        dataset["train"] = dataset["train"].select(range(args.max_samples))
+    
+    dataset["train"] = dataset["train"].class_encode_column("label")
+    dataset["train"] = dataset["train"].align_labels_with_mapping(
+            label2id=model.config.label2id, label_column="label")
+    class_label_feature = dataset["train"].features["label"]
+    dataset["test"] = dataset["test"].cast_column("label", class_label_feature)
+
     dataset = dataset.map(encode, batched=True)
     print(dataset)
-
-    model = make_model(
-        vocab_size=2048,             # 32 should suffice for FEN encoding + 1968 actions for av predictor
-                                     # padding to the multiple of 128 -> 2048
-        pad_token_id=tokenizer.pad_token_id,
-        hidden_size=256,             # embedding dimension from the paper
-        intermediate_size=1024,      # not specified
-        num_hidden_layers=8,         # as in the paper
-        num_attention_heads=8,       # as in the paper
-        max_position_embeddings=78,  # as in the paper (for bc and sv predictors, +1 for av)
-        torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2",
-        #device_map="auto",
-        device="cuda",
-        finetuning_task="text-classification",
-    )
 
     training_args = TrainingArguments(
         # 2 devices
@@ -75,7 +86,7 @@ def run_training(args):
         save_strategy="epoch",
         log_level="error",
         report_to="wandb" if args.run else "none",
-        run_name=args.n,
+        run_name=args.run,
     )
 
     trainer = Trainer(
@@ -97,6 +108,7 @@ def run_training(args):
 if __name__ == "__main__":
     parser = ArgumentParser("Run training")
     parser.add_argument("dataset", help="Local or remote HF Dataset name")
+    parser.add_argument("-max_samples", default=40_000_000, help="Max Samples")
     parser.add_argument("-val", help="Local or remote HF Dataset name for validation")
     parser.add_argument("-max_steps", help="Max Steps")
     parser.add_argument("-run", default="rook_policy_bc", help="W&B run name, None for no logging")

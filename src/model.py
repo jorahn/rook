@@ -8,12 +8,13 @@ from tokenizers.models import BPE
 
 from src.const import ACTION_SPACE, VOCAB
 
-class CustomTokenizer(PreTrainedTokenizerFast):
+class RookTokenizer(PreTrainedTokenizerFast):
     def __call__(self, *args, **kwargs):
         kwargs["return_token_type_ids"] = False
         return super().__call__(*args, **kwargs)
 
 def make_model(config_dict):
+    config_dict["vocab_size"] = ((len(VOCAB) + 127) // 128) * 128
     config = LlamaConfig(**config_dict)
     label_to_id = {v: i for i, v in enumerate(ACTION_SPACE)}
     config.num_labels = len(ACTION_SPACE)
@@ -30,7 +31,7 @@ def make_tokenizer(model_max_length=78):
         merges=[])
     )
 
-    fast_tokenizer = CustomTokenizer(
+    fast_tokenizer = RookTokenizer(
         tokenizer_object=tokenizer,
         model_max_length=model_max_length,
         pad_token="[PAD]",
