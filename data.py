@@ -4,8 +4,8 @@ from argparse import ArgumentParser
 
 from datasets import load_dataset
 
-from src.utils.common import process_fen
-from src.utils.convert_rook import process_cot, extract_rook
+from src.utils.common import process_fen, process_cot
+from src.utils.convert_rook import extract_rook
 
 
 parser = ArgumentParser()
@@ -32,7 +32,11 @@ def process_lm(data, fen_column, move_column, options_column=None, values_column
     if cot:
         # scale values from (-999.99, 999.99) independent of player -> to (0, 100) from the perspective of the active player
         data = data.map(
-            lambda x: process_cot(process_fen(x[fen_column]), x[options_column], x[values_column], x[move_column]),
+            process_cot, 
+            fn_kwargs={
+                "fen_column": fen_column, "options_column": options_column, 
+                "values_column": values_column, "move_column": move_column
+            },
             remove_columns=[fen_column, move_column, options_column, values_column],
         )
     else:
@@ -46,6 +50,8 @@ def process_lm(data, fen_column, move_column, options_column=None, values_column
 print("Loading Dataset ...")
 if ".csv" in args.dataset:
     data = load_dataset("csv", data_files=args.dataset.split(","))
+elif ".txt" in args.dataset:
+    data = load_dataset("text", data_files=args.dataset)
 else:
     data = load_dataset(args.dataset, split=args.split)
 
@@ -53,7 +59,12 @@ else:
 print("Processing Dataset ...")
 if args.rook:
     print("Converting from ROOK format")
+    data = data.filter(lambda x: isinstance(x["text"], str) and len(x["text"]) > 10)
     data = data.map(extract_rook)
+    args.fen_column = "fen"
+    args.move_column = "action"
+    args.options_column = "options"
+    args.values_column = "values"
 
 if args.task == "clf":
     print("Processing for text-classification task")

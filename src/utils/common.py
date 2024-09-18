@@ -1,4 +1,6 @@
 import re
+import math
+
 
 def position_padding(match, padding_char="."):
     return padding_char * int(match.group())
@@ -49,3 +51,47 @@ def unprocess_fen(custom_fen):
 
     # Combine all components
     return f"{position} {turn} {castling} {en_passant} {halfmove} {fullmove}"
+
+def transform_distribution(x):
+    # Normalize to [-1, 1] range
+    normalized = (x - 50) / 50
+    
+    # Apply sigmoid-like transformation
+    transformed = math.tanh(100 * normalized)
+    
+    # Scale back to [0, 100] range
+    result = 50 + (transformed * 50)
+    
+    return result
+
+def process_cot(record, fen_column="fen", options_column="options", values_column="values", move_column="action"):
+    # scale evaluations from (-999.99, 999.99) to (0, 100)
+    fen = record[fen_column]
+    try:
+        turn = fen.split(" ")[1]
+    except IndexError:
+        turn = fen[64]
+    turn = -1 if turn == "b" else 1
+    values = [((turn * e) + 1000) / 20 for e in record[values_column]]
+    values_normalized = [transform_distribution(v) for v in values]
+
+    # convert to string
+    options = " ".join(record[options_column]) # no padding, all single tokens in vocab
+    values = " ".join([f"{v:.2f}".rjust(6, "-") for v in values_normalized])
+    action = record[move_column]
+    try:
+        fen = process_fen(fen)
+    except ValueError:
+        pass
+
+    return {"text": f"{fen} [OPTIONS] {options} [VALUES] {values} [ACTION] {action}"}
+
+def process_action_value():
+    # return fen+action -> value (binning)
+    # Policy: Legal action with maximal predicted expected action-value.
+    raise NotImplementedError("Not implemented yet")
+
+def process_state_value():
+    # return fen -> value (binning)
+    # Policy: Legal action leading to next state with minimal predicted expected state-value for opponent player.
+    raise NotImplementedError("Not implemented yet")

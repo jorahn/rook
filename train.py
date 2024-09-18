@@ -4,7 +4,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 from argparse import ArgumentParser
 
 import wandb
-from transformers import Trainer, TrainingArguments
+from transformers import Trainer, TrainingArguments, get_wsd_schedule
 import torch
 from datasets import load_dataset, load_from_disk, Dataset, DatasetDict
 import numpy as np
@@ -12,12 +12,35 @@ import numpy as np
 from src.model import make_model, make_tokenizer
 
 
+def make_optimizer(model, learning_rate, weight_decay):
+    no_decay = ["bias", "layer_norm.weight"]
+    optimizer_grouped_parameters = [
+        {
+            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+            "weight_decay": weight_decay,
+        },
+        {
+            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+            "weight_decay": 0.0,
+        },
+    ]
+    optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=learning_rate)
+    return optimizer
+
 def compute_metrics(eval_pred):
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
     return {"accuracy": np.mean(predictions == labels)}
 
 def run_training(args):
+    learning_rate = 4e-4
+    weight_decay = 0.01
+    num_warmup_steps = 500
+    num_epochs = 10
+    batch_size = 1024
+    num_devices = 2
+    min_lr_ratio = 0.1
+
     if args.task == "clf": task = "text-classification" 
     elif args.task in ("lm", "lm-cot"): task = "text-generation"
     else: raise ValueError(f"Unknown task: {args.task}")
@@ -70,23 +93,36 @@ def run_training(args):
     dataset = dataset.map(encode, batched=True)
     print(dataset)
 
+    total_steps = (len(dataset["train"]) // (batch_size * num_devices)) * num_epochs
+    num_stable_steps = int(total_steps * 0.9)
+    num_decay_steps = total_steps - num_stable_steps
+
+    optimizer = make_optimizer(model, learning_rate, weight_decay)
+    schedule = get_wsd_schedule(
+        optimizer=optimizer,
+        num_warmup_steps=num_warmup_steps,
+        num_stable_steps=num_stable_steps,
+        num_decay_steps=num_decay_steps,
+        min_lr_ratio=min_lr_ratio
+    )
+
     training_args = TrainingArguments(
         # 2 devices
-        per_device_train_batch_size=1024, # bs 1024 in the paper on 4x 95G tpu, try to fit as much as possible ...
+        per_device_train_batch_size=batch_size, # bs 1024 in the paper on 4x 95G tpu, try to fit as much as possible ...
         gradient_accumulation_steps=1,    # ... else increase this
         gradient_checkpointing=False,     # save memory if needed, reduces speed
         bf16=True,
-        learning_rate=4e-4,               # as in the paper
+        learning_rate=learning_rate,      # as in the paper
         torch_compile=True,
         output_dir="checkpoints/save_"+args.run,
         per_device_eval_batch_size=512,
         eval_strategy="steps",
         eval_steps=500,
         eval_on_start=True,
-        num_train_epochs=10.0,             # 2.7-3.2 in the paper for ablations, 5.4 for full training
+        num_train_epochs=num_epochs,      # 2.7-3.2 in the paper for ablations, 5.4 for full training
         #max_steps=args.max_steps,        # 5e6 in the paper, 40m samples, bs 1024 -> 128 Epochs !?!
         lr_scheduler_type="cosine",
-        warmup_steps=500,
+        warmup_steps=num_warmup_steps,
         save_strategy="epoch",
         log_level="error",
         report_to="wandb" if args.run else "none",
@@ -100,7 +136,7 @@ def run_training(args):
         train_dataset=dataset["train"],
         eval_dataset=dataset["test"],
         compute_metrics=compute_metrics,
-        optimizers=(None, None), # TODO: non-standard optimizer and scheduler
+        optimizers=(optimizer, schedule),
         )
     
     print(f"training {model.num_parameters():,} parameters")

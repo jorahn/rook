@@ -43,11 +43,11 @@ def make_model_lm(config_dict):
     return model
 
 
-def make_tokenizer(task="clf", model_max_length=78):
+def make_tokenizer(task="clf"):
     if task == "clf":
-        return make_tokenizer_clf(model_max_length=model_max_length)
+        return make_tokenizer_clf(model_max_length=78)
     elif task == "lm":
-        return make_tokenizer_lm(model_max_length=model_max_length)
+        return make_tokenizer_lm(model_max_length=150)
     else:
         raise ValueError(f"Unknown task: {task}")
     
@@ -70,9 +70,9 @@ def make_tokenizer_clf(model_max_length=78):
     )
     return fast_tokenizer
 
-def make_tokenizer_lm(model_max_length=192): # TODO verify lm max length
+def make_tokenizer_lm(model_max_length=150): # TODO verify lm max length
     vocab = VOCAB + ACTION_SPACE
-    vocab += ["[OPTIONS]", "[VALUES]", "[ACTION]"]
+    vocab += [" ", "[OPTIONS]", "[VALUES]", "[ACTION]"]
 
     tokenizer = Tokenizer(BPE(
         vocab=dict(zip(vocab, range(len(vocab)))), 
