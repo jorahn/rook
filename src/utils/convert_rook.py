@@ -48,7 +48,7 @@ def extract_rook(example, field="text"):
     # - label plain: "e2d3" -> one-hot-encoded best move
     # - label probas: probabilities for all moves (top5 evals -> rescale for current player -> softmax)
 
-    if field:
+    if field and isinstance(example, dict):
         text = example[field]
     else:
         text = example

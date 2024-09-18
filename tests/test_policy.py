@@ -14,6 +14,7 @@ def test_policy():
         "num_hidden_layers": 8,
         "num_attention_heads": 8,
         "max_position_embeddings": 78,
+        "finetuning_task": "text-classification",
     }
     model = make_model(cfg)
     tokenizer = make_tokenizer()
@@ -31,6 +32,7 @@ def test_policy_bs2():
         "num_hidden_layers": 8,
         "num_attention_heads": 8,
         "max_position_embeddings": 78,
+        "finetuning_task": "text-classification",
     }
     model = make_model(cfg)
     tokenizer = make_tokenizer()

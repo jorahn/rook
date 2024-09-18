@@ -8,6 +8,7 @@ def test_make_model():
         "num_hidden_layers": 8,
         "num_attention_heads": 8,
         "max_position_embeddings": 78,
+        "finetuning_task": "text-classification",
     })
     assert model.config.vocab_size == 128
     assert model.config.num_labels == 1968 # data/action_space.json
@@ -26,3 +27,8 @@ def test_make_tokenizer():
     # this can also fit plain and COT data representation 
 
     # => one tokenizer for all tasks
+
+
+def test_make_tokenizer_lm():
+    tokenizer = make_tokenizer(task="lm")
+    assert tokenizer.encode("..rqkbQ..b...p..p..p...pP.pPp.p..p..P...P....N....P..PPPR.BNKB.RwKQ..c60..13.[OPTIONS]c1d2 f1e2 c1b2 f3d2 f1c4[VALUES]-80.78 -81.09 -81.12 -81.18 -81.15[ACTION]f3d2") == [1, 1, 30, 29, 26, 19, 16, 1, 1, 19, 1, 1, 1, 28, 1, 1, 28, 1, 1, 28, 1, 1, 1, 28, 15, 1, 28, 15, 28, 1, 28, 1, 1, 28, 1, 1, 15, 1, 1, 1, 15, 1, 1, 1, 1, 14, 1, 1, 1, 1, 15, 1, 1, 15, 15, 15, 17, 1, 12, 14, 13, 12, 1, 17, 31, 13, 16, 1, 1, 20, 8, 2, 1, 1, 3, 5, 1, 2000, 498, 1294, 488, 1357, 1289, 2001, 0, 10, 2, 1, 9, 10, 0, 10, 3, 1, 2, 11, 0, 10, 3, 1, 3, 4, 0, 10, 3, 1, 3, 10, 0, 10, 3, 1, 3, 7, 2002, 1357]

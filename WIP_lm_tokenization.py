@@ -6,7 +6,12 @@ ds = load_dataset("text", data_files="/home/jrahn/dev/RookWorld/dev/data/rook/ro
 tokenizer = make_tokenizer(task="lm")
 print(tokenizer.vocab_size)
 
-n = 0
+for i, ex in enumerate(ds["train"]):
+    tmp = extract_rook(ex)
+    if "0000" in tmp["options"]:
+        print(i)
+        break
+n = 33
 example = ds["train"][n]
 print(example)
 step = extract_rook(example)
