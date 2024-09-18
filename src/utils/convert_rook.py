@@ -82,51 +82,72 @@ def yield_proc_lines(f, proc_fn):
         yield proc_fn(line.strip())
 
 
-def process_rook(input_string):
+def extract_rook(example, field="text"):
+    if field:
+        text = example[field]
+    else:
+        text = example
+
     try:
-        _, fen, moves, evaluation, best_move = input_string.split(":")
+        _, fen, moves, evaluation, best_move = text.split(":")
     except:
-        print("Error processing input string:", input_string)
+        print("Error processing input string:", text)
         return None
     fen = process_fen(fen[:-1].strip())
 
     # every move will become a single token, so no padding
-    moves = ".".join([m.strip() for m in moves[:-1].split()])
+    moves = [m.strip() for m in moves[:-1].split()]
     
-    evaluation = ".".join([e.strip().ljust(7, " ") for e in evaluation[:-1].split()]).ljust(40, " ")
+    evaluations = [float(e.strip()) for e in evaluation[:-1].split()]
     
     # every move will become a single token, so no padding
     best_move = best_move.strip()
 
-    return (fen, moves, evaluation, best_move)
+    result = {"fen": fen, "options": moves, "values": evaluations, "action": best_move}
+    return result
+
+def process_cot(record):
+    # scale evaluations from (-999.99, 999.99) to (0, 100)
+    fen = record["fen"]
+    turn = fen.split(" ")[1]
+    turn = -1 if turn == "b" else 1
+    values = [((turn * e) + 1000) / 20 for e in record["values"]]
+    
+    # convert to string
+    options = ".".join(record["options"]) # no padding, all single tokens in vocab
+    values = ".".join([f"{v:.2f}".ljust(5) for v in values])
+    action = record["action"]
+
+    return f"{fen}[OPTIONS]{options}[VALUES]{values}[ACTION]{action}"
 
 
-def make_policy_bc_data(input_file_obj, probas=False, cot=False, cot_delimiter="+", debug=False):
+def make_policy_bc_data(input_file_obj, cot=False, probas=False):
     # Behavior Cloning (BC) dataset
 
     # input sample: "P: 1r6/p5k1/5p2/PPp3p1/2r3P1/4B3/4KP2/R7 w - - 1 33 M: e2d3 f2f4 b5b6 a1b1 e2f3 E: -1.27 -3.33 -3.43 -3.11 -3.85 B: e2d3"
     
     # output dataset sample:
     # - text plain: ".r......p.....k......p..PPp...p...r...P.....B.......KP..R.......w-...-.1..33."
-    # - text cot:   ".r......p.....k......p..PPp...p...r...P.....B.......KP..R.......w-...-.1..33.+e2d3.f2f4.b5b6.a1b1.e2f3+-1.27  .-3.33  .-3.43  .-3.11  .-3.85   "
+    # - text cot:   ".r......p.....k......p..PPp...p...r...P.....B.......KP..R.......w-...-.1..33.[OPTIONS]e2d3.f2f4.b5b6.a1b1.e2f3[VALUES]-1.27  .-3.33  .-3.43  .-3.11  .-3.85   [ACTION]e2d3"
 
     # - label plain: "e2d3" -> one-hot-encoded best move
     # - label probas: probabilities for all moves (top5 evals -> rescale for current player -> softmax)
 
-    tuple_gen = yield_proc_lines(input_file_obj, process_rook)
+    gen_step1 = yield_proc_lines(input_file_obj, extract_rook)
 
-    # extract fen as "text" and best move as "label" from `process_rook` output
+    # extract fen as "text" and best move as "label" from `extract_rook` output
     # append CLS token to "text"
-    cls_token = "[CLS]"
 
     config = {
-        "text": lambda fen, *rest: f"{fen}{cls_token}",
-        "label": 3
+        "text": lambda x: x['fen']+"[CLS]",
+        "label": lambda x: x["action"],
     }
 
     if cot:
-        # insert COT data (moves, evaluations) into "text"
-        config["text"] = lambda fen, moves, evaluation, _: f"{fen}{cot_delimiter}{moves}{cot_delimiter}{evaluation}{cls_token}"
+        # only for LM task, not for CLF
+        config = {
+            "text": lambda x: process_cot(*x),
+        }
 
     if probas:
         # based on current player (w|b) from FEN
@@ -135,11 +156,12 @@ def make_policy_bc_data(input_file_obj, probas=False, cot=False, cot_delimiter="
         # and apply softmax
         raise NotImplementedError("Probas not implemented yet")
 
-    dict_gen = create_dict_generator(tuple_gen, config)
+    dict_gen = create_dict_generator(gen_step1, config)
 
+    # TODO avoid list conversion, use generator
+    # ds = Dataset.from_generator(dict_gen) -> cannot pickle
     ds = list(dict_gen)
-    if not debug: ds = Dataset.from_list(ds)
-    return ds
+    return Dataset.from_list(ds)
 
 def make_policy_sv_data():
     raise NotImplementedError("Not implemented yet")

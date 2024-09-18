@@ -18,6 +18,10 @@ def compute_metrics(eval_pred):
     return {"accuracy": np.mean(predictions == labels)}
 
 def run_training(args):
+    if args.task == "clf": task = "text-classification" 
+    elif args.task in ("lm", "lm-cot"): task = "text-generation"
+    else: raise ValueError(f"Unknown task: {args.task}")
+
     tokenizer = make_tokenizer()
     def encode(examples):
         return tokenizer(examples["text"], truncation=True, padding="max_length")
@@ -33,7 +37,7 @@ def run_training(args):
         #"attn_implementation": "flash_attention_2",
         #device_map="auto",
         "device": "cuda",
-        "finetuning_task": "text-classification",
+        "finetuning_task": task,
     })
     
     if os.path.exists(args.dataset):
@@ -79,7 +83,7 @@ def run_training(args):
         eval_strategy="steps",
         eval_steps=500,
         eval_on_start=True,
-        num_train_epochs=5.0,             # 2.7-3.2 in the paper for ablations, 5.4 for full training
+        num_train_epochs=10.0,             # 2.7-3.2 in the paper for ablations, 5.4 for full training
         #max_steps=args.max_steps,        # 5e6 in the paper, 40m samples, bs 1024 -> 128 Epochs !?!
         lr_scheduler_type="cosine",
         warmup_steps=500,
@@ -101,6 +105,7 @@ def run_training(args):
     
     print(f"training {model.num_parameters():,} parameters")
     trainer.train()
+
     trainer.save_model("checkpoints/save_"+args.run)
     tokenizer.save_pretrained("checkpoints/save_"+args.run)
 
@@ -108,6 +113,7 @@ def run_training(args):
 if __name__ == "__main__":
     parser = ArgumentParser("Run training")
     parser.add_argument("dataset", help="Local or remote HF Dataset name")
+    parser.add_argument("-task", default="clf", help="Training task (clf|lm|lm-cot)")
     parser.add_argument("-max_samples", default=40_000_000, help="Max Samples")
     parser.add_argument("-val", help="Local or remote HF Dataset name for validation")
     parser.add_argument("-max_steps", help="Max Steps")
