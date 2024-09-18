@@ -84,7 +84,7 @@ def process_cot(record, fen_column="fen", options_column="options", values_colum
     except ValueError:
         pass
 
-    return {"text": f"{fen} [OPTIONS] {options} [VALUES] {values} [ACTION] {action}"}
+    return {"text": f"{fen}[OPTIONS]{options}[VALUES]{values}[ACTION]{action}"}
 
 def process_action_value():
     # return fen+action -> value (binning)

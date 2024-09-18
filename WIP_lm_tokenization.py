@@ -9,8 +9,21 @@ print(tokenizer.vocab_size)
 n = 0
 example = ds["train"][n]
 print(example)
-print(extract_rook(example))
-print(process_cot(extract_rook(example)))
-print(tokenizer(process_cot(extract_rook(ds["train"][n]))["text"])["input_ids"])
+step = extract_rook(example)
+print(step)
+step = process_cot(step)
+print(step)
+step = tokenizer(step["text"])["input_ids"]
+print(step)
+step = tokenizer.decode(step)
+print(step)
 
-print(tokenizer.decode(tokenizer(process_cot(extract_rook(ds["train"][n]))["text"])["input_ids"]))
+for ex in ds["train"]:
+    if len(ex["text"]) > 10:
+        ids = tokenizer(process_cot(extract_rook(ex))["text"])["input_ids"]
+        if len(ids) != 116:
+            print(ex)
+            print(extract_rook(ex))
+            print(process_cot(extract_rook(ex))["text"])
+            print(ids)
+    

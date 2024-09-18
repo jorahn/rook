@@ -37,7 +37,7 @@ def make_model_clf(config_dict):
 
 def make_model_lm(config_dict):
     # pad to multiple of 128
-    config_dict["vocab_size"] = ((len(VOCAB) + len(ACTION_SPACE) + 3 + 127) // 128) * 128
+    config_dict["vocab_size"] = ((len(VOCAB) + len(ACTION_SPACE) + 4 + 127) // 128) * 128
     config = LlamaConfig(**config_dict)
     model = LlamaForCausalLM(config=config)
     return model
@@ -47,16 +47,20 @@ def make_tokenizer(task="clf"):
     if task == "clf":
         return make_tokenizer_clf(model_max_length=78)
     elif task == "lm":
-        return make_tokenizer_lm(model_max_length=150)
+        return make_tokenizer_lm(model_max_length=116)
     else:
         raise ValueError(f"Unknown task: {task}")
     
 def make_tokenizer_clf(model_max_length=78):
     vocab = VOCAB
+    single_char_vocab = [e for e in VOCAB if len(e) == 1]
+    multi_char_vocab = [e for e in VOCAB if len(e) > 1]
+    merges = [tuple(e) for e in multi_char_vocab]
+    print(merges[:5])
 
     tokenizer = Tokenizer(BPE(
-        vocab=dict(zip(vocab, range(len(vocab)))), 
-        merges=[])
+        vocab=dict(zip(single_char_vocab, range(len(single_char_vocab)))), 
+        merges=merges)
     )
 
     fast_tokenizer = RookTokenizer(
@@ -70,14 +74,19 @@ def make_tokenizer_clf(model_max_length=78):
     )
     return fast_tokenizer
 
-def make_tokenizer_lm(model_max_length=150): # TODO verify lm max length
+def make_tokenizer_lm(model_max_length=116): # TODO verify lm max length
     vocab = VOCAB + ACTION_SPACE
-    vocab += [" ", "[OPTIONS]", "[VALUES]", "[ACTION]"]
+    vocab += ["[OPTIONS]", "[VALUES]", "[ACTION]", "0000"]
+    
+    single_char_vocab = [e for e in vocab if len(e) == 1]
+    multi_char_vocab = [e for e in vocab if len(e) > 1]
+    merges = []
 
     tokenizer = Tokenizer(BPE(
-        vocab=dict(zip(vocab, range(len(vocab)))), 
-        merges=[])
+        vocab=dict(zip(single_char_vocab, range(len(single_char_vocab)))), 
+        merges=merges)
     )
+    tokenizer.add_special_tokens(multi_char_vocab)
 
     fast_tokenizer = RookTokenizer(
         tokenizer_object=tokenizer,
