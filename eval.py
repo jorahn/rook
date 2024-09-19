@@ -8,10 +8,9 @@ import json
 import io
 
 from datasets import load_dataset, load_from_disk, DatasetDict
-import evaluate
 from evaluate import evaluator
-import torch
 import chess
+import chess.pgn
 import pandas as pd
 from tqdm import tqdm
 
@@ -56,6 +55,8 @@ if args.eval_type == "action":
 elif args.eval_type == "puzzle":
     # expect csv file with columns "FEN" and "Moves" (lichess puzzle format)
     data = pd.read_csv(args.eval_dataset)
+    if args.num_samples > 0:
+        data = data[:args.num_samples]
     tokenizer = RookTokenizer.from_pretrained(args.checkpoint)
     policy = BCChessPolicy(args.checkpoint, tokenizer, batch_size=args.batch_size)
 
@@ -65,32 +66,46 @@ elif args.eval_type == "puzzle":
         "correct_puzzles": 0,
         "total_puzzles": 0,
     }
-    for _, row in tqdm(data.iterrows()):
+    pbar = tqdm(total=len(data), desc="Puzzle Evaluation")
+    for _, row in data.iterrows():
         eval_results["total_puzzles"] += 1
+        pbar.update(1)
         fen = row["FEN"]
         board = chess.Board(fen)
         moves = row["Moves"].split()
-        for idx, move in enumerate(moves):
-            if idx % 2 == 0:
+        for i, move in enumerate(moves):
+            if i % 2 == 1:
                 eval_results["total_moves"] += 1
                 prediction = policy.play(board.fen())
-                if prediction["label"] == move:
+                if prediction[0] == move:
                     eval_results["correct_moves"] += 1
-                    if idx == len(moves) - 1:
+                    if i == len(moves) - 1:
                         eval_results["correct_puzzles"] += 1
                 else:
+                    # all checkmates are correct solutions
+                    # https://github.com/google-deepmind/searchless_chess/blob/9bcd9918bdbcd25b1b3b77401fd630cd9ce874b0/src/puzzles.py#L91
+                    board.push(chess.Move.from_uci(prediction[0]))
+                    if board.is_checkmate():
+                        eval_results["correct_puzzles"] += 1
+                    else:
+                        # undo last move
+                        board.pop()
                     break
+                
             board.push(chess.Move.from_uci(move))
+
+    pbar.close()
+
     print("-"*50)
     print("Puzzle Evaluation results:")
-    print(f"Accuracy: {eval_results['correct_puzzles']/eval_results['correct_puzzles']:.2%}")
+    print(f"Accuracy: {eval_results['correct_puzzles']/eval_results['total_puzzles']:.2%}")
     print(eval_results)
 
 elif args.eval_type == "checkmate":
-    with open("../data/checkmate.json", "r") as f:
+    with open("data/checkmate.json", "r") as f:
         data = json.load(f)
     data = data["examples"]
-    if args.num_samples:
+    if args.num_samples > 0:
         data = data[:args.num_samples]
 
     tokenizer = RookTokenizer.from_pretrained(args.checkpoint)
@@ -104,11 +119,10 @@ elif args.eval_type == "checkmate":
         eval_results["total_moves"] += 1
         game = chess.pgn.read_game(io.StringIO(example["input"]))
         board = game.board()
-        for move in game.mainline_moves(): board.push(move)
-        fens = board.fen()
+        for m in game.mainline_moves(): board.push(m)
         move = board.parse_san(example["target"])
-        predicted_move = policy.play(board.fen())
-        if predicted_move["label"] == move:
+        prediction = policy.play(board.fen())
+        if prediction[0] == move.uci():
             eval_results["correct_moves"] += 1
 
     print("-"*50)
