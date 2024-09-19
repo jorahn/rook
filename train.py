@@ -72,6 +72,7 @@ def run_training(args):
     stable_pct = 0.9 # pct of steps in stable lr for wsd scheduler
     num_epochs = 5
     batch_size = 1024 if args.task == "clf" else 512
+    grad_acc = 1 if args.task == "clf" else 2
     num_devices = 2
     min_lr_ratio = 0.1
     max_position_embeddings = 78 if args.task == "clf" else 116
@@ -153,7 +154,7 @@ def run_training(args):
     training_args = TrainingArguments(
         # 2 devices
         per_device_train_batch_size=batch_size, # bs 1024 in the paper on 4x 95G tpu, try to fit as much as possible ...
-        gradient_accumulation_steps=1,    # ... else increase this
+        gradient_accumulation_steps=grad_acc,    # ... else increase this
         gradient_checkpointing=False,     # save memory if needed, reduces speed
         bf16=True,
         learning_rate=learning_rate,      # as in the paper
