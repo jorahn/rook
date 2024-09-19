@@ -36,7 +36,7 @@ def run_training(args):
     learning_rate = 4e-4
     weight_decay = 0.01
     num_warmup_steps = 500
-    num_epochs = 10
+    num_epochs = 5
     batch_size = 1024
     num_devices = 2
     min_lr_ratio = 0.1
@@ -150,9 +150,9 @@ if __name__ == "__main__":
     parser = ArgumentParser("Run training")
     parser.add_argument("dataset", help="Local or remote HF Dataset name")
     parser.add_argument("-task", default="clf", help="Training task (clf|lm|lm-cot)")
-    parser.add_argument("-max_samples", default=40_000_000, help="Max Samples")
+    parser.add_argument("-max_samples", type=int, default=40_000_000, help="Max Samples")
     parser.add_argument("-val", help="Local or remote HF Dataset name for validation")
-    parser.add_argument("-max_steps", help="Max Steps")
+    parser.add_argument("-max_steps", type=int, help="Max Steps")
     parser.add_argument("-run", default="rook_policy_bc", help="W&B run name, None for no logging")
     args = parser.parse_args()
 
