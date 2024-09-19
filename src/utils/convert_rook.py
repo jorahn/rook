@@ -45,6 +45,7 @@ def extract_rook(example, field="text"):
     # output dataset sample:
     # - text plain: ".r......p.....k......p..PPp...p...r...P.....B.......KP..R.......w-...-.1..33."
     # - text cot:   ".r......p.....k......p..PPp...p...r...P.....B.......KP..R.......w-...-.1..33.[OPTIONS]e2d3.f2f4.b5b6.a1b1.e2f3[VALUES]-1.27  .-3.33  .-3.43  .-3.11  .-3.85   [ACTION]e2d3"
+    # TODO: update with latest tokenization scheme
 
     # - label plain: "e2d3" -> one-hot-encoded best move
     # - label probas: probabilities for all moves (top5 evals -> rescale for current player -> softmax)

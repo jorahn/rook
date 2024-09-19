@@ -2,9 +2,11 @@ transformers
 datasets
 tokenizer
 accelerate
+evaluate
 torch
 tqdm
 flash-attn
 chess
+wandb 
 
 pytest

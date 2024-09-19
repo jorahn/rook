@@ -11,7 +11,7 @@ from src.model import RookTokenizer
 class BCChessPolicy():
     def __init__(self, model, tokenizer, batch_size=1, filter_illegal=False):
         print(f"Loading ROOK Chess Policy (Behavior Cloning)")
-        if os.path.exists(tokenizer):
+        if isinstance(tokenizer, str) and os.path.exists(tokenizer):
             tokenizer = RookTokenizer.from_pretrained(tokenizer)
             
         self._pipeline = pipeline(

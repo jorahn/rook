@@ -52,7 +52,6 @@ def make_tokenizer(task="clf"):
         raise ValueError(f"Unknown task: {task}")
     
 def make_tokenizer_clf(model_max_length=78):
-    vocab = VOCAB
     single_char_vocab = [e for e in VOCAB if len(e) == 1]
     multi_char_vocab = [e for e in VOCAB if len(e) > 1]
     merges = [tuple(e) for e in multi_char_vocab]
@@ -74,7 +73,7 @@ def make_tokenizer_clf(model_max_length=78):
     )
     return fast_tokenizer
 
-def make_tokenizer_lm(model_max_length=116): # TODO verify lm max length
+def make_tokenizer_lm(model_max_length=116):
     vocab = VOCAB + ACTION_SPACE
     vocab += ["[OPTIONS]", "[VALUES]", "[ACTION]", "0000"]
     
