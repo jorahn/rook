@@ -8,7 +8,6 @@ import json
 import io
 
 from datasets import load_dataset, load_from_disk, DatasetDict
-from evaluate import evaluator
 import chess
 import chess.pgn
 import pandas as pd
@@ -22,7 +21,7 @@ parser = ArgumentParser()
 parser.add_argument("checkpoint", type=str, help="Path to model & tokenizer checkpoint")
 parser.add_argument("--filter_illegal", action="store_true", help="Filter illegal moves during evaluation")
 parser.add_argument("--eval_type", type=str, choices=["action", "puzzle", "checkmate"], default="action", help="Type of evaluation to perform")
-parser.add_argument("--eval_dataset", type=str, help="Path to evaluation dataset")
+parser.add_argument("--eval_dataset", type=str, help="Path to evaluation dataset (not required for checkmate eval)")
 parser.add_argument("--eval_split", type=str, default="test", help="Dataset split to evaluate")
 parser.add_argument("-n", "--num_samples", type=int, default=1_000, help="Number of samples to evaluate")
 parser.add_argument("-bs", "--batch_size", type=int, default=1, help="Batch size for evaluation")
@@ -39,8 +38,7 @@ if args.eval_type == "action":
     if args.num_samples > 0:
         data = data.select(range(args.num_samples))
 
-    tokenizer = RookTokenizer.from_pretrained(args.checkpoint)
-    policy = BCChessPolicy(args.checkpoint, tokenizer, batch_size=args.batch_size, filter_illegal=args.filter_illegal)
+    policy = BCChessPolicy(args.checkpoint, args.checkpoint, batch_size=args.batch_size, filter_illegal=args.filter_illegal)
     eval_results = {"total": 0, "correct": 0}
     for example in tqdm(data):
         prediction = policy.play(example["text"])
@@ -57,8 +55,7 @@ elif args.eval_type == "puzzle":
     data = pd.read_csv(args.eval_dataset)
     if args.num_samples > 0:
         data = data[:args.num_samples]
-    tokenizer = RookTokenizer.from_pretrained(args.checkpoint)
-    policy = BCChessPolicy(args.checkpoint, tokenizer, batch_size=args.batch_size)
+    policy = BCChessPolicy(args.checkpoint, args.checkpoint, batch_size=args.batch_size)
 
     eval_results = {
         "correct_moves": 0,
@@ -87,9 +84,6 @@ elif args.eval_type == "puzzle":
                     board.push(chess.Move.from_uci(prediction[0]))
                     if board.is_checkmate():
                         eval_results["correct_puzzles"] += 1
-                    else:
-                        # undo last move
-                        board.pop()
                     break
                 
             board.push(chess.Move.from_uci(move))
@@ -108,8 +102,7 @@ elif args.eval_type == "checkmate":
     if args.num_samples > 0:
         data = data[:args.num_samples]
 
-    tokenizer = RookTokenizer.from_pretrained(args.checkpoint)
-    policy = BCChessPolicy(args.checkpoint, tokenizer, batch_size=args.batch_size)
+    policy = BCChessPolicy(args.checkpoint, args.checkpoint, batch_size=args.batch_size)
     
     eval_results = {
         "correct_moves": 0,

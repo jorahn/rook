@@ -4,14 +4,16 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 from transformers import pipeline
 import torch
 import chess
-import numpy as np
 
 from src.utils.common import process_fen, unprocess_fen
-
+from src.model import RookTokenizer
 
 class BCChessPolicy():
     def __init__(self, model, tokenizer, batch_size=1, filter_illegal=False):
         print(f"Loading ROOK Chess Policy (Behavior Cloning)")
+        if os.path.exists(tokenizer):
+            tokenizer = RookTokenizer.from_pretrained(tokenizer)
+            
         self._pipeline = pipeline(
             "text-classification", 
             model=model, 
