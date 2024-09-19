@@ -35,6 +35,7 @@
 # ROOK v2
 #.r......p.....k......p..PPp...p...r...P.....B.......KP..R.......w-...-.1..33.+e2d3. f2f4. b5b6. a1b1. e2f3.+-1.27 -3.33 -3.43 -3.11 -3.85+e2d3[CLS]
 
+import datasets
 
 def extract_rook(example, field="text"):
     # Behavior Cloning (BC) dataset
@@ -48,11 +49,13 @@ def extract_rook(example, field="text"):
     # - label plain: "e2d3" -> one-hot-encoded best move
     # - label probas: probabilities for all moves (top5 evals -> rescale for current player -> softmax)
 
+    if isinstance(example, datasets.formatting.formatting.LazyRow):
+        example = dict(example)
+
     if field and isinstance(example, dict):
         text = example[field]
     else:
         text = example
-
     try:
         _, fen, moves, evaluation, best_move = text.split(":")
     except:

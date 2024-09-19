@@ -57,6 +57,7 @@ else:
 
 ## Process Dataset
 print("Processing Dataset ...")
+
 if args.rook:
     print("Converting from ROOK format")
     data = data.filter(lambda x: isinstance(x["text"], str) and len(x["text"]) > 10)
