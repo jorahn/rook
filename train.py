@@ -6,7 +6,6 @@ from argparse import ArgumentParser
 import wandb
 from transformers import Trainer, TrainingArguments, get_wsd_schedule
 from transformers import DataCollatorForLanguageModeling, default_data_collator
-import evaluate
 import torch
 from datasets import load_dataset, load_from_disk, Dataset, DatasetDict
 import numpy as np
@@ -34,23 +33,13 @@ def compute_accuracy_clf(eval_pred):
     predictions = np.argmax(logits, axis=-1)
     return {"accuracy": np.mean(predictions == labels)}
 
-def compute_accuracy_lm(eval_pred):
-    print(eval_pred)
-    scores = []
-    for reference, generated_text in zip(eval_pred.label_ids, eval_pred.predictions):
-        # only compute accuracy for the last token ([ACTION] token)
-        scores.append(reference[-1] == generated_text[-1])
-
-    return {"action_accuracy": np.mean(scores)}
-
 def compute_accuracy_lm(eval_preds):
     preds, labels = eval_preds
-    # preds have the same shape as the labels, after the argmax(-1) has been calculated
-    # by preprocess_logits_for_metrics but we need to shift the labels
-    labels = labels[:, 1:].reshape(-1)
-    preds = preds[:, :-1].reshape(-1)
-    scores = (labels[-1] == preds[-1])
-    return {"action_accuracy": np.mean(scores)}
+    # only compute accuracy for the last token ([ACTION] token) 
+    labels_last_token = labels[:, -1]
+    preds_last_token = preds[:, -1]
+    scores = (labels_last_token == preds_last_token)
+    return {"accuracy": np.mean(scores)}
 
 def preprocess_logits_for_metrics_lm(logits, labels):
     if isinstance(logits, tuple):
@@ -61,31 +50,49 @@ def preprocess_logits_for_metrics_lm(logits, labels):
 
 
 def run_training(args):
-    if args.task == "clf": task = "text-classification" 
-    elif args.task in ("lm", "lm-cot"): task = "text-generation"
-    else: raise ValueError(f"Unknown task: {args.task}")
+    tokenizer = make_tokenizer(args.task)
+    if args.task == "clf": 
+        task = "text-classification" 
+        max_position_embeddings = 78 # 77 + [CLS] -> as in the paper (for bc and sv predictors, +1 for av)
+        batch_size = 1024 # bs 1024 in the paper on 4x 95G tpu, try to fit as much as possible ...
+        grad_acc = 1
+        compute_metrics = compute_accuracy_clf
+        preprocess_logits_for_metrics = None
+        data_collator = default_data_collator
+    elif args.task == "lm":
+        task = "text-generation"
+        max_position_embeddings = 79 # 77 + [ACTION] + a
+        batch_size = 512
+        grad_acc = 2
+        compute_metrics = compute_accuracy_lm
+        preprocess_logits_for_metrics = preprocess_logits_for_metrics_lm
+        data_collator = DataCollatorForLanguageModeling(mlm=False, tokenizer=tokenizer)
+        # TODO: maybe pad seq lengths to multiple of 128
+        # https://huggingface.co/docs/transformers/en/main_classes/data_collator#transformers.DataCollatorForLanguageModeling
+    elif args.task == "lm-cot":
+        raise NotImplementedError("task type lm-cot is not yet implemented")
+        task = "text-generation"
+        max_position_embeddings = 116 # 77 + [OPTIONS] + 5o + [VALUES] + 5v + [ACTION] + a
+        grad_acc = 2
+        batch_size = 512
+        compute_metrics = None
+        preprocess_logits_for_metrics = None
+        data_collator = None
+    else: 
+        raise ValueError(f"Unknown task: {args.task}")
 
-    learning_rate = 4e-4
+    learning_rate = 4e-4 # as in the paper
     weight_decay = 0.01
-    scheduler = "warmup_stable_decay" # linear, cosine or warmup_stable_decay
+    scheduler = "warmup_stable_decay" # constant, linear, cosine or warmup_stable_decay
     num_warmup_steps = 500
     stable_pct = 0.9 # pct of steps in stable lr for wsd scheduler
-    num_epochs = 5
-    batch_size = 1024 if args.task == "clf" else 512
-    grad_acc = 1 if args.task == "clf" else 2
+    num_epochs = 10   # 2.7-3.2 in the paper for ablations, 5.4 for full training
     num_devices = 2
     min_lr_ratio = 0.1
-    max_position_embeddings = 78 if args.task == "clf" else 116
 
-    tokenizer = make_tokenizer(task=args.task)
     def encode(examples):
         return tokenizer(examples["text"], truncation=True, padding="max_length")
 
-    compute_metrics = compute_accuracy_clf if args.task == "clf" else compute_accuracy_lm
-    preprocess_logits_for_metrics = None if args.task == "clf" else preprocess_logits_for_metrics_lm
-    data_collator = default_data_collator if args.task == "clf" else DataCollatorForLanguageModeling(mlm=False, tokenizer=tokenizer)
-    # TODO: maybe pad seq lengths to multiple of 128
-    # https://huggingface.co/docs/transformers/en/main_classes/data_collator#transformers.DataCollatorForLanguageModeling
 
     model = make_model({
         "pad_token_id": tokenizer.pad_token_id,
@@ -93,13 +100,13 @@ def run_training(args):
         "intermediate_size": 1024,      # not specified
         "num_hidden_layers": 8,         # as in the paper
         "num_attention_heads": 8,       # as in the paper
-        "max_position_embeddings": max_position_embeddings,  # as in the paper (for bc and sv predictors, +1 for av)
+        "max_position_embeddings": max_position_embeddings,  
         "torch_dtype": torch.bfloat16,
         #"attn_implementation": "flash_attention_2",
         #"device_map": "auto",
         "device": "cuda",
         "finetuning_task": task,
-    })
+    }, arch=args.arch.lower())
 
     if os.path.exists(args.dataset):
         dataset = load_from_disk(args.dataset)
@@ -152,19 +159,18 @@ def run_training(args):
         optimizer, schedule = None, None
 
     training_args = TrainingArguments(
-        # 2 devices
-        per_device_train_batch_size=batch_size, # bs 1024 in the paper on 4x 95G tpu, try to fit as much as possible ...
-        gradient_accumulation_steps=grad_acc,    # ... else increase this
-        gradient_checkpointing=False,     # save memory if needed, reduces speed
+        per_device_train_batch_size=batch_size, 
+        gradient_accumulation_steps=grad_acc,
+        gradient_checkpointing=False, # trade off between speed and memory
         bf16=True,
-        learning_rate=learning_rate,      # as in the paper
+        learning_rate=learning_rate,
         torch_compile=True,
         output_dir="checkpoints/save_"+args.run,
         per_device_eval_batch_size=int(batch_size/2),
         eval_strategy="steps",
         eval_steps=500,
         eval_on_start=True,
-        num_train_epochs=num_epochs,      # 2.7-3.2 in the paper for ablations, 5.4 for full training
+        num_train_epochs=num_epochs,
         #max_steps=5e6,        # 5e6 in the paper, 40m samples, bs 1024 -> 128 Epochs !?!
         lr_scheduler_type=scheduler,
         warmup_steps=num_warmup_steps,
@@ -202,6 +208,7 @@ if __name__ == "__main__":
     parser.add_argument("-val", help="Local or remote HF Dataset name for validation")
     parser.add_argument("-max_steps", type=int, help="Max Steps")
     parser.add_argument("-run", help="W&B run name, None for no logging")
+    parser.add_argument("-arch", default="llama", help="Llama or GPT2 architecture")
     args = parser.parse_args()
 
     # set the wandb project where this run will be logged

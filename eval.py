@@ -19,6 +19,7 @@ from src.model import RookTokenizer
 
 parser = ArgumentParser()
 parser.add_argument("checkpoint", type=str, help="Path to model & tokenizer checkpoint")
+parser.add_argument("--task", type=str, default="clf", help="HF Decoder Transformer trained on clf|lm|lm-cot task")
 parser.add_argument("--filter_illegal", action="store_true", help="Filter illegal moves during evaluation")
 parser.add_argument("--eval_type", type=str, choices=["action", "puzzle", "checkmate"], default="action", help="Type of evaluation to perform")
 parser.add_argument("--eval_dataset", type=str, help="Path to evaluation dataset (not required for checkmate eval)")
@@ -38,12 +39,20 @@ if args.eval_type == "action":
     if args.num_samples > 0:
         data = data.select(range(args.num_samples))
 
-    policy = BCChessPolicy(args.checkpoint, args.checkpoint, batch_size=args.batch_size, filter_illegal=args.filter_illegal)
+    policy = BCChessPolicy(args.checkpoint, args.checkpoint, train_task=args.task, batch_size=args.batch_size, filter_illegal=args.filter_illegal)
     eval_results = {"total": 0, "correct": 0}
     for example in tqdm(data):
-        prediction = policy.play(example["text"])
-        if prediction[0] == example["label"]:
-            eval_results["correct"] += 1
+        if args.task == "clf":
+            prediction = policy.play(example["text"])
+            if prediction[0] == example["label"]:
+                eval_results["correct"] += 1
+        else:
+            fen, move = example["text"].split("[ACTION]")
+            prediction = policy.play(fen)
+            print(fen, move, prediction)
+            input()
+            if prediction[0] == move:
+                eval_results["correct"] += 1
         eval_results["total"] += 1
     print("-"*50)
     print("Action Evaluation results:")
@@ -55,7 +64,7 @@ elif args.eval_type == "puzzle":
     data = pd.read_csv(args.eval_dataset)
     if args.num_samples > 0:
         data = data[:args.num_samples]
-    policy = BCChessPolicy(args.checkpoint, args.checkpoint, batch_size=args.batch_size)
+    policy = BCChessPolicy(args.checkpoint, args.checkpoint, batch_size=args.batch_size, train_task=args.task)
 
     eval_results = {
         "correct_moves": 0,
@@ -102,7 +111,7 @@ elif args.eval_type == "checkmate":
     if args.num_samples > 0:
         data = data[:args.num_samples]
 
-    policy = BCChessPolicy(args.checkpoint, args.checkpoint, batch_size=args.batch_size)
+    policy = BCChessPolicy(args.checkpoint, args.checkpoint, batch_size=args.batch_size, train_task=args.task)
     
     eval_results = {
         "correct_moves": 0,
