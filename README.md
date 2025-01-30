@@ -1,4 +1,8 @@
 # RookWorld
+<p align="center">
+  <a href="https://laion.ai/notes/rook/"><b>Blog Post Link</b>👁️</a>
+</p>
+
 
 Re-implementation of https://arxiv.org/pdf/2402.04494 (focus on Figure A6)
 - decoder transformer architecture (Llama)
